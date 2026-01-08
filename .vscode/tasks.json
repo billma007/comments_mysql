@@ -1,0 +1,11 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Activate Conda Environment",
+            "type": "shell",
+            "command": "conda activate ${workspaceFolder}/.conda",
+            "problemMatcher": []
+        }
+    ]
+}

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <title>Hexo 评论管理</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root {
+            font-family: "Segoe UI", sans-serif;
+            color: #111827;
+            background-color: #f3f4f6;
+        }
+        body {
+            margin: 0;
+            padding: 0 1.5rem 2rem;
+        }
+        header {
+            padding: 1.5rem 0 0.5rem;
+        }
+        h1 {
+            margin: 0;
+            font-size: 1.75rem;
+        }
+        section {
+            background: #fff;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.05);
+        }
+        label {
+            display: block;
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            margin-bottom: 0.75rem;
+        }
+        button {
+            background: #111827;
+            color: #fff;
+            border: none;
+            border-radius: 0.375rem;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .comment {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 0.75rem 0;
+        }
+        .comment:last-child {
+            border-bottom: none;
+        }
+        .comment small {
+            color: #6b7280;
+        }
+        .comment .actions {
+            margin-top: 0.5rem;
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .status {
+            font-size: 0.9rem;
+            color: #2563eb;
+            min-height: 1rem;
+        }
+        .comment.child {
+            padding-left: 1rem;
+            border-left: 2px solid #e5e7eb;
+        }
+        .like-count {
+            font-size: 0.85rem;
+            color: #6b7280;
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Hexo 评论管理</h1>
+    <p>使用管理员登录以审核评论并创建新的管理员账号。</p>
+</header>
+
+<section id="login-section">
+    <h2>管理员登录</h2>
+    <label for="admin-username">用户名</label>
+    <input id="admin-username" type="text" />
+    <label for="admin-password">密码</label>
+    <input id="admin-password" type="password" />
+    <button id="login-button">登录</button>
+    <p class="status" id="login-status"></p>
+</section>
+
+<section id="create-admin" style="display:none;">
+    <h2>创建新的管理员</h2>
+    <label for="new-admin-username">用户名</label>
+    <input id="new-admin-username" type="text" />
+    <label for="new-admin-password">密码</label>
+    <input id="new-admin-password" type="password" />
+    <button id="create-admin-button">创建管理员</button>
+    <p class="status" id="create-admin-status"></p>
+</section>
+
+<section id="comment-section" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+        <h2>全部评论</h2>
+        <button id="refresh-comments">刷新</button>
+    </div>
+    <div id="comment-list"></div>
+    <p class="status" id="comment-status"></p>
+</section>
+
+<script>
+    const state = {
+        token: null
+    };
+
+    const loginBtn = document.getElementById('login-button');
+    const loginStatus = document.getElementById('login-status');
+    const createAdminSection = document.getElementById('create-admin');
+    const commentSection = document.getElementById('comment-section');
+    const commentList = document.getElementById('comment-list');
+    const commentStatus = document.getElementById('comment-status');
+
+    async function login() {
+        loginStatus.textContent = '正在登录...';
+        try {
+            const response = await fetch('/api/users/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: document.getElementById('admin-username').value,
+                    password: document.getElementById('admin-password').value
+                })
+            });
+            if (!response.ok) {
+                throw new Error('登录失败');
+            }
+            const data = await response.json();
+            state.token = data.token;
+            loginStatus.textContent = `已登录：${data.username}`;
+            createAdminSection.style.display = 'block';
+            commentSection.style.display = 'block';
+            await loadComments();
+        } catch (error) {
+            loginStatus.textContent = error.message;
+        }
+    }
+
+    async function loadComments() {
+        if (!state.token) {
+            commentStatus.textContent = '请先登录。';
+            return;
+        }
+        commentStatus.textContent = '正在加载评论...';
+        const response = await fetch('/api/admin/comments?include_deleted=true', {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (!response.ok) {
+            commentStatus.textContent = '加载评论失败';
+            return;
+        }
+        const data = await response.json();
+        commentList.innerHTML = '';
+        renderCommentTree(data.items, commentList, 0);
+        commentStatus.textContent = data.items.length ? '' : '暂无评论。';
+    }
+
+    function renderCommentTree(items, parent, depth) {
+        items.forEach(item => {
+            const div = document.createElement('div');
+            div.className = depth ? 'comment child' : 'comment';
+            div.innerHTML = `
+                <strong>#${item.id}</strong> 来自 <em>${item.post_id}</em><br />
+                <small>${item.username} • ${item.created_at}</small>
+                <p>${item.content}</p>
+                <div class="like-count">点赞：${item.like_count}</div>
+                <div class="actions">
+                    ${item.is_deleted ? '<span>已删除</span>' : `<button data-id="${item.id}">删除</button>`}
+                </div>
+            `;
+            parent.appendChild(div);
+            if (!item.is_deleted) {
+                const btn = div.querySelector('button[data-id]');
+                if (btn) {
+                    btn.addEventListener('click', () => deleteComment(btn.dataset.id));
+                }
+            }
+            if (item.replies && item.replies.length) {
+                renderCommentTree(item.replies, parent, depth + 1);
+            }
+        });
+    }
+
+    async function deleteComment(id) {
+        if (!state.token) {
+            return;
+        }
+        commentStatus.textContent = `正在删除评论 #${id}...`;
+        const response = await fetch('/api/admin/delete_comment', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: JSON.stringify({ comment_id: Number(id) })
+        });
+        if (!response.ok) {
+            commentStatus.textContent = '删除失败';
+            return;
+        }
+        commentStatus.textContent = '已删除';
+        loadComments();
+    }
+
+    async function createAdmin() {
+        if (!state.token) {
+            return;
+        }
+        const createStatus = document.getElementById('create-admin-status');
+        createStatus.textContent = '正在创建管理员...';
+        const response = await fetch('/api/admin/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: JSON.stringify({
+                username: document.getElementById('new-admin-username').value,
+                password: document.getElementById('new-admin-password').value
+            })
+        });
+        if (!response.ok) {
+            createStatus.textContent = '创建失败';
+            return;
+        }
+        createStatus.textContent = '管理员已创建';
+    }
+
+    loginBtn.addEventListener('click', login);
+    document.getElementById('create-admin-button').addEventListener('click', createAdmin);
+    document.getElementById('refresh-comments').addEventListener('click', loadComments);
+</script>
+</body>
+</html>
