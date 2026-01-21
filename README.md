@@ -2,6 +2,10 @@
 
 Python + SQL Server backend for handling blog comments while keeping Hexo static.
 
+**Warning : This project is for course design purposes only and does not include encryption or security features.  Please DO NOT deploy this code directly on the internet.**
+
+Project details: https://billma.top/2026/01/08/comments-hexo/
+
 ## 1. Prerequisites
 
 - Python 3.10+
